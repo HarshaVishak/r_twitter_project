@@ -1,0 +1,110 @@
+library(twitteR)
+library(base64enc)
+library(tm)
+library(ROAuth)
+library(DT)
+library(shiny)
+library(reactable)
+library(reactR)
+library(syuzhet)
+library(ggplot2)
+
+sentiment_analyser <- function(d){
+  d = tolower(d)
+  d = gsub("rt","",d)
+  d = gsub("@\\w","",arsenal_text)
+  d =gsub("[[:punct:]]", "",d)
+  d=gsub("http\\w","",d)
+  d =gsub("^ ","",d)
+  d=gsub(" $","",d)
+  return( get_nrc_sentiment((d)))
+}
+
+
+download.file(url="http://curl.haxx.se/ca/cacert.pem",destfile="cacert.pem")
+
+# Set constant requestURL
+requestURL <- "https://api.twitter.com/oauth/request_token"
+# Set constant accessURL
+accessURL <- "https://api.twitter.com/oauth/access_token"
+# Set constant authURL
+authURL <- "https://api.twitter.com/oauth/authorize"
+
+consumerKey="insert your keys"
+consumerSecret=""
+accessToken=""
+accessSecret=""
+
+setup_twitter_oauth(consumerKey,                   
+                    consumerSecret,
+                    accessToken,
+                    accessSecret) 
+
+# Define UI for application 
+ui <- fluidPage(
+
+    # Application title
+    titlePanel("Tweet sentiment analyser"),
+
+    # Sidebar with a slider input for number of tweets to be searched for
+    fluidRow(
+        sidebarPanel("",
+               wellPanel(
+            sliderInput("bins",
+                        "Number of tweets to be checked:",
+                        min = 50,
+                        max = 100,
+                        value = 100)
+        ),
+        textInput("text", h3("Enter the keyword to search for tweets"), 
+                  value = "")
+        )
+        # Show a plot of the generated distribution
+       
+    ),
+    column(8,
+    textOutput("hashtag_selected"),
+    dataTableOutput("tweet_table")
+    ),
+    column(12,
+           dataTableOutput("final_scores")),
+    fluidRow(
+      plotOutput("emotion_histogram")
+))
+
+# Define server logic required to draw a histogram
+server <- function(input, output) {
+    
+    output$hashtag_selected = renderText(
+        { paste("You are searching for tweets about",input$text)}
+    )
+    toptweets = reactive({
+        tweets <- twListToDF(searchTwitter(input$text, n=input$bins, lang="en"))
+        tweet_text <- tweets$text
+        toptweets <- data.frame(tweets)
+        return(toptweets)
+    })
+    output$tweet_table <- renderDataTable({
+        toptweets()}
+    )
+    sentiment_score <- reactive({
+      sentimentscore = sentiment_analyser(toptweets()$text)
+      final_Sentimentscores<-data.frame(colSums(mysentiment_arsenal[,]))
+      names(final_Sentimentscores)<-"Score"
+      final_Sentimentscores<-cbind("sentiment"=rownames(final_Sentimentscores),final_Sentimentscores)
+      rownames(final_Sentimentscores)<-NULL
+      
+      return(final_Sentimentscores)
+    })
+    output$final_scores <- renderDataTable({
+    
+        sentiment_score()
+    })
+    output$emotion_histogram <- renderPlot({
+      ggplot(data=sentiment_score(),aes(x=sentiment,y=Score))+geom_bar(aes(fill=sentiment),stat = "identity")+
+        theme(legend.position="none")+
+        xlab("Sentiments")+ylab("scores")+ggtitle("Sentiments of people behind the tweets on",input$text)
+    })
+}
+# Run the application 
+shinyApp(ui = ui, server = server)
